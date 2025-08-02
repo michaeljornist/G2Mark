@@ -1,0 +1,21 @@
+# G2burn Laser Engraving Application Requirements
+
+# Core GUI framework (usually included with Python)
+# tkinter - included with Python standard library
+
+# Image processing
+Pillow>=8.0.0
+
+# Scientific computing for image matrices
+numpy>=1.19.0
+
+# Serial communication for GRBL
+pyserial>=3.4
+
+# Optional: Enhanced image processing
+# opencv-python>=4.5.0  # Uncomment for advanced image features
+
+# Development dependencies (optional)
+# pytest>=6.0.0        # For unit testing
+# black>=21.0.0         # For code formatting
+# mypy>=0.812           # For type checking
