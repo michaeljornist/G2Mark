@@ -1,4 +1,4 @@
-# G2burn - Laser Engraving Application
+# G2burn - Laser Engraving Application (work in progress ... ) 
 
 A modern, object-oriented laser engraving application built with Python and Tkinter. This application provides an intuitive interface for creating designs and generating G-Code for GRBL-based laser engravers.
 
