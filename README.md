@@ -112,49 +112,6 @@ G2burn/
    - Review generated code
    - Save or copy to clipboard
 
-## Key Improvements in the Refactor
-
-### 1. Object-Oriented Design
-- **Before**: Monolithic script with global variables
-- **After**: Clean class hierarchy with proper encapsulation
-
-### 2. Consistent Naming Convention
-- **Before**: Mixed naming styles (`open_engraving_workspace`, `draw_work_area`)
-- **After**: Consistent PascalCase for classes, snake_case for methods
-
-### 3. Separation of Concerns
-- **Before**: All functionality in one 900+ line file
-- **After**: Logical separation into focused modules
-
-### 4. Improved Maintainability
-- **Before**: Difficult to modify or extend
-- **After**: Modular design allows easy addition of new features
-
-### 5. Better Error Handling
-- **Before**: Basic error handling
-- **After**: Comprehensive error handling with user feedback
-
-### 6. Enhanced Documentation
-- **Before**: Minimal comments
-- **After**: Full docstrings and type hints
-
-## Architecture Benefits
-
-### Extensibility
-- Easy to add new drawing tools by inheriting from `DrawingTool`
-- Simple to add new export formats in `GCodeGenerator`
-- Straightforward to add new image processing features
-
-### Testability
-- Each class can be unit tested independently
-- Clear interfaces make mocking easy
-- Separation of concerns enables focused testing
-
-### Maintainability
-- Clear responsibility boundaries
-- Consistent coding patterns
-- Comprehensive documentation
-
 ## Configuration
 
 ### GRBL Settings
