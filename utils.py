@@ -17,7 +17,7 @@ class Constants:
     # File extensions
     GCODE_EXTENSIONS = [".gcode", ".nc", ".txt"]
     IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff"]
-    PROJECT_EXTENSION = ".g2burn"
+    PROJECT_EXTENSION = ".g2mark"
     
     # Default values
     DEFAULT_FEED_RATE = 1000  # mm/min

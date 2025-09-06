@@ -4,7 +4,9 @@ This module handles the generation of G-Code from drawing objects.
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk, scrolledtext
+import numpy as np
+from PIL import Image, ImageTk
 
 
 class GCodeGenerator:
@@ -23,311 +25,642 @@ class GCodeGenerator:
         # G-Code settings
         self.feed_rate = 1000  # mm/min
         self.laser_power = 255  # 0-255 or 0-1000 depending on controller
-        self.travel_speed = 3000  # mm/min for rapid moves
+        self.travel_speed = 1000  # mm/min for rapid moves
         
-    def generate_gcode(self):
-        """Generate G-Code from the current drawing objects.
+    def generate_instructions_from_image(self, image_path, origin):
+        """Generate instructions from a high-resolution image.
         
+        Args:
+            image_path (str): Path to the high-resolution image
+            origin (tuple): Origin coordinates as (x, y) in pixels
+            
+        Returns:
+            list: List of lists containing tuples (from, to, power, speed) for each row
+        """
+        try:
+            # Load the image
+            image = Image.open(image_path)
+            
+            # Convert to grayscale if not already
+            if image.mode != 'L':
+                image = image.convert('L')
+            
+            # Convert to numpy array
+            img_array = np.array(image)
+            
+            # Convert to binary matrix (1 for black/dark pixels, 0 for white/light pixels)
+            # Using threshold of 128 (middle value)
+            binary_matrix = (img_array < 128).astype(int)
+            
+            # Print the origin coordinates
+            print(f"Origin coordinates: {origin}")
+            print(f"Image size: {binary_matrix.shape} pixels")
+            print(f"Matrix shape: {binary_matrix.shape[1]} x {binary_matrix.shape[0]} (width x height)")
+            
+            # Generate line segments for each row
+            all_instructions = []
+            
+            # Scan each row
+            for row_idx in range(binary_matrix.shape[0]):
+                row = binary_matrix[row_idx]
+                row_instructions = []
+                
+                # Track line creation state
+                in_line = False
+                line_start = None
+                
+                # Scan each pixel in the row
+                for col_idx in range(len(row)):
+                    pixel_value = row[col_idx]
+                    
+                    if pixel_value == 1:  # Found a black pixel
+                        if not in_line:
+                            # Start of a new line
+                            in_line = True
+                            line_start = col_idx
+                            print(f"Saw first 1 at index (col={col_idx}, row={row_idx}) -> coordinate ({col_idx}, {row_idx})")
+                    
+                    else:  # pixel_value == 0, found a white pixel
+                        if in_line:
+                            # End of current line
+                            line_end = col_idx - 1  # Last black pixel was at col_idx - 1
+                            in_line = False
+                            
+                            # Create instruction tuple: (from, to, power, speed)
+                            # Coordinates are (x, y) = (col, row)
+                            instruction = (
+                                (line_start, row_idx),  # from coordinate (x, y)
+                                (line_end + 1, row_idx),  # to coordinate (x, y) - end position after last black pixel
+                                self.laser_power,        # power
+                                self.travel_speed        # speed
+                            )
+                            row_instructions.append(instruction)
+                            
+                            # print(f"Saw last 1 (after that 0) at (col={line_end}, row={row_idx}) -> coordinate ({line_end}, {row_idx})")
+                            # print(f"Generated instruction: {instruction}")
+                
+                # Handle case where row ends while still in a line
+                if in_line:
+                    line_end = len(row) - 1  # Last pixel in row
+                    instruction = (
+                        (line_start, row_idx),   # from coordinate (x, y)
+                        (line_end + 1, row_idx), # to coordinate (x, y) - end position after last pixel
+                        self.laser_power,        # power
+                        self.travel_speed        # speed
+                    )
+                    row_instructions.append(instruction)
+                    
+                    
+                    # print(f"Saw last 1 (end of row) at (col={line_end}, row={row_idx}) -> coordinate ({line_end}, {row_idx})")
+                    # print(f"Generated instruction: {instruction}")
+                
+                # Add row instructions to all instructions
+                if row_instructions:  # Only add if row has any instructions
+                    all_instructions.append(row_instructions)
+                    print(f"Row {row_idx} instructions: {row_instructions}")
+            
+            print(f"\nTotal rows with instructions: {len(all_instructions)}")
+            print(f"Total line segments generated: {sum(len(row) for row in all_instructions)}")
+            # print(f"All instructions: {all_instructions}")
+            return all_instructions
+            
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            messagebox.showerror("Image Processing Error", f"Failed to process image:\n{str(e)}")
+            return None
+
+
+
+
+
+    def generate_instructions_from_image_optimized_v1(self, image_path, origin):
+        """Generate instructions from a high-resolution image.
+        
+        Args:
+            image_path (str): Path to the high-resolution image
+            origin (tuple): Origin coordinates as (x, y) in pixels
+            
+        Returns:
+            list: List of lists containing tuples (from, to, power, speed) for each row
+        """
+        try:
+            # Load the image
+            image = Image.open(image_path)
+            
+            # Convert to grayscale if not already
+            if image.mode != 'L':
+                image = image.convert('L')
+            
+            # Convert to numpy array
+            img_array = np.array(image)
+            
+            # Convert to binary matrix (1 for black/dark pixels, 0 for white/light pixels)
+            # Using threshold of 128 (middle value)
+            binary_matrix = (img_array < 128).astype(int)
+            
+            # Print the origin coordinates
+            print(f"Origin coordinates: {origin}")
+            print(f"Image size: {binary_matrix.shape} pixels")
+            print(f"Matrix shape: {binary_matrix.shape[1]} x {binary_matrix.shape[0]} (width x height)")
+            
+            # Generate line segments for each row
+            all_instructions = []
+            
+            optimization_dict = {}
+            instruction_id = 0
+            
+            #Find closest blackdot to start with from the origin with some recursive spreading function / or some numpy prebuild function
+            
+
+
+            # Scan each row
+            for row_idx in range(binary_matrix.shape[0]):
+                row = binary_matrix[row_idx]
+                row_instructions = []
+                
+                # Track line creation state
+                in_line = False
+                line_start = None
+                
+                # Scan each pixel in the row
+                for col_idx in range(len(row)):
+                    pixel_value = row[col_idx]
+                    
+                    if pixel_value == 1:  # Found a black pixel
+                        if not in_line:
+                            # Start of a new line
+                            in_line = True
+                            line_start = col_idx
+                            print(f"Saw first 1 at index (col={col_idx}, row={row_idx}) -> coordinate ({col_idx}, {row_idx})")
+                    
+                    else:  # pixel_value == 0, found a white pixel
+                        if in_line:
+                            # End of current line
+                            line_end = col_idx - 1  # Last black pixel was at col_idx - 1
+                            in_line = False
+                            
+                            # Create instruction tuple: (from, to, power, speed)
+                            # Coordinates are (x, y) = (col, row)
+                            instruction = (
+                                (line_start, row_idx),  # from coordinate (x, y)
+                                (line_end + 1, row_idx),  # to coordinate (x, y) - end position after last black pixel
+                                self.laser_power,        # power
+                                self.travel_speed        # speed
+                            )
+                            row_instructions.append(instruction)
+                            
+                            # print(f"Saw last 1 (after that 0) at (col={line_end}, row={row_idx}) -> coordinate ({line_end}, {row_idx})")
+                            # print(f"Generated instruction: {instruction}")
+                
+                # Handle case where row ends while still in a line
+                if in_line:
+                    line_end = len(row) - 1  # Last pixel in row
+                    instruction = (
+                        (line_start, row_idx),   # from coordinate (x, y)
+                        (line_end + 1, row_idx), # to coordinate (x, y) - end position after last pixel
+                        self.laser_power,        # power
+                        self.travel_speed        # speed
+                    )
+                    row_instructions.append(instruction)
+                    
+                    
+                    # print(f"Saw last 1 (end of row) at (col={line_end}, row={row_idx}) -> coordinate ({line_end}, {row_idx})")
+                    # print(f"Generated instruction: {instruction}")
+                
+                # Add row instructions to all instructions
+                if row_instructions:  # Only add if row has any instructions
+                    all_instructions.append(row_instructions)
+                    print(f"Row {row_idx} instructions: {row_instructions}")
+            
+            print(f"\nTotal rows with instructions: {len(all_instructions)}")
+            print(f"Total line segments generated: {sum(len(row) for row in all_instructions)}")
+            # print(f"All instructions: {all_instructions}")
+            return all_instructions
+            
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            messagebox.showerror("Image Processing Error", f"Failed to process image:\n{str(e)}")
+            return None
+        
+
+    def convert_instructions_to_gcode(self, all_instructions, origin, image_height_pixels):
+        """Convert instruction tuples to G-Code strings relative to origin.
+        
+        Args:
+            all_instructions (list): List of lists containing instruction tuples
+            origin (tuple): Origin coordinates as (x, y) in pixels
+            image_height_pixels (int): Height of the image in pixels (for Y-axis flipping)
+            
         Returns:
             list: List of G-Code command strings
         """
-        # G-Code header
-        gcode_lines = self._generate_header()
+        gcode_commands = []
+        pixel_size_mm = 0.072  # mm per pixel (as used in high-res export)
         
-        # Process each drawing object
-        for drawing_obj in self.sketching_stage.drawing_objects:
-            obj_type = drawing_obj['type']
-            real_coords = drawing_obj['real_coords']
-            
-            if obj_type == 'line':
-                gcode_lines.extend(self._generate_line_gcode(real_coords))
-            elif obj_type == 'rectangle':
-                gcode_lines.extend(self._generate_rectangle_gcode(real_coords))
+        # Start with absolute positioning
+        gcode_commands.append("G90")
+        
+        origin_x, origin_y = origin
+        print(f"Converting instructions to G-Code with origin at ({origin_x}, {origin_y})")
+        print(f"Image height: {image_height_pixels} pixels")
+        
+        # Process each row of instructions
+        for row_instructions in all_instructions:
+            for instruction in row_instructions:
+                from_coord, to_coord, power, speed = instruction
+                from_x, from_y = from_coord
+                to_x, to_y = to_coord
                 
-        # G-Code footer
-        gcode_lines.extend(self._generate_footer())
-        
-        return gcode_lines
-        
-    def _generate_header(self):
-        """Generate G-Code header.
-        
-        Returns:
-            list: Header G-Code lines
-        """
-        header = [
-            "; G-code generated by G2burn Laser Engraver",
-            f"; Project: {self.sketching_stage.project_name}",
-            f"; Workspace: {self.sketching_stage.length_mm}mm x {self.sketching_stage.height_mm}mm",
-            f"; Generated on: {self._get_timestamp()}",
-            ";",
-            "G21 ; Set units to millimeters",
-            "G90 ; Absolute positioning", 
-            "G28 ; Home all axes",
-            "M3 S0 ; Initialize laser (off)",
-            "G0 X0 Y0 ; Move to origin",
-            ";"
-        ]
-        return header
-        
-    def _generate_footer(self):
-        """Generate G-Code footer.
-        
-        Returns:
-            list: Footer G-Code lines
-        """
-        footer = [
-            ";",
-            "M5 ; Laser off",
-            "G0 X0 Y0 ; Return to origin", 
-            "M30 ; Program end"
-        ]
-        return footer
-        
-    def _generate_line_gcode(self, coords):
-        """Generate G-Code for a line.
-        
-        Args:
-            coords (list): [x1, y1, x2, y2] in mm
-            
-        Returns:
-            list: G-Code lines for the line
-        """
-        x1, y1, x2, y2 = coords
-        
-        lines = [
-            f"; Line from ({x1:.3f}, {y1:.3f}) to ({x2:.3f}, {y2:.3f})",
-            f"G0 X{x1:.3f} Y{y1:.3f} F{self.travel_speed} ; Move to start",
-            f"M3 S{self.laser_power} ; Laser on",
-            f"G1 X{x2:.3f} Y{y2:.3f} F{self.feed_rate} ; Cut to end",
-            "M5 ; Laser off",
-            ""
-        ]
-        return lines
-        
-    def _generate_rectangle_gcode(self, coords):
-        """Generate G-Code for a rectangle.
-        
-        Args:
-            coords (list): [x1, y1, x2, y2] in mm
-            
-        Returns:
-            list: G-Code lines for the rectangle
-        """
-        x1, y1, x2, y2 = coords
-        
-        # Ensure we have the correct corner order
-        min_x, max_x = min(x1, x2), max(x1, x2)
-        min_y, max_y = min(y1, y2), max(y1, y2)
-        
-        lines = [
-            f"; Rectangle from ({min_x:.3f}, {min_y:.3f}) to ({max_x:.3f}, {max_y:.3f})",
-            f"G0 X{min_x:.3f} Y{min_y:.3f} F{self.travel_speed} ; Move to corner 1",
-            f"M3 S{self.laser_power} ; Laser on",
-            f"G1 X{max_x:.3f} Y{min_y:.3f} F{self.feed_rate} ; Cut to corner 2",
-            f"G1 X{max_x:.3f} Y{max_y:.3f} F{self.feed_rate} ; Cut to corner 3", 
-            f"G1 X{min_x:.3f} Y{max_y:.3f} F{self.feed_rate} ; Cut to corner 4",
-            f"G1 X{min_x:.3f} Y{min_y:.3f} F{self.feed_rate} ; Cut back to corner 1",
-            "M5 ; Laser off",
-            ""
-        ]
-        return lines
-        
-    def _get_timestamp(self):
-        """Get current timestamp for G-Code header.
-        
-        Returns:
-            str: Formatted timestamp
-        """
-        from datetime import datetime
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-    def generate_and_show(self):
-        """Generate G-Code and show it in a popup window."""
-        # Generate G-Code
-        gcode_lines = self.generate_gcode()
-        
-        if not self.sketching_stage.drawing_objects:
-            gcode_lines.insert(-4, "; No drawing objects found")
-            
-        # Show G-Code in a new window
-        self._show_gcode_window(gcode_lines)
-        
-    def _show_gcode_window(self, gcode_lines):
-        """Show G-Code in a popup window.
-        
-        Args:
-            gcode_lines (list): List of G-Code command strings
-        """
-        # Create popup window
-        gcode_window = tk.Toplevel(self.sketching_stage.window)
-        gcode_window.title("Generated G-Code")
-        gcode_window.geometry("600x500")
-        
-        # Center the window
-        gcode_window.transient(self.sketching_stage.window)
-        
-        # Create frame for buttons
-        button_frame = tk.Frame(gcode_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        
-        # Statistics label
-        stats_text = f"Lines: {len(gcode_lines)} | Objects: {len(self.sketching_stage.drawing_objects)}"
-        stats_label = tk.Label(button_frame, text=stats_text, font=("Arial", 9))
-        stats_label.pack(side=tk.LEFT)
-        
-        # Save button
-        save_btn = tk.Button(
-            button_frame,
-            text="Save G-Code",
-            command=lambda: self._save_gcode_to_file(gcode_lines),
-            font=("Arial", 10),
-            padx=15
-        )
-        save_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # Copy button
-        copy_btn = tk.Button(
-            button_frame,
-            text="Copy to Clipboard",
-            command=lambda: self._copy_to_clipboard(gcode_lines, gcode_window),
-            font=("Arial", 10),
-            padx=15
-        )
-        copy_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # Create frame for text widget and scrollbar
-        text_frame = tk.Frame(gcode_window)
-        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Create text widget
-        text_widget = tk.Text(
-            text_frame,
-            wrap=tk.NONE,
-            font=("Courier", 10),
-            bg="white",
-            fg="black"
-        )
-        
-        # Create scrollbars
-        v_scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
-        h_scrollbar = tk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=text_widget.xview)
-        
-        # Configure text widget scrolling
-        text_widget.config(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
-        # Pack scrollbars and text widget
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # Insert G-Code text
-        gcode_text = "\n".join(gcode_lines)
-        text_widget.insert(tk.END, gcode_text)
-        
-        # Make text widget read-only
-        text_widget.config(state=tk.DISABLED)
-        
-        # Add syntax highlighting
-        self._apply_gcode_highlighting(text_widget, gcode_lines)
-        
-    def _apply_gcode_highlighting(self, text_widget, gcode_lines):
-        """Apply basic syntax highlighting to G-Code.
-        
-        Args:
-            text_widget (tk.Text): Text widget to highlight
-            gcode_lines (list): List of G-Code lines
-        """
-        # Configure text tags for highlighting
-        text_widget.tag_configure("comment", foreground="green")
-        text_widget.tag_configure("gcode", foreground="blue", font=("Courier", 10, "bold"))
-        text_widget.tag_configure("mcode", foreground="red", font=("Courier", 10, "bold"))
-        
-        # Apply highlighting
-        for line_num, line in enumerate(gcode_lines, 1):
-            line_start = f"{line_num}.0"
-            line_end = f"{line_num}.end"
-            
-            if line.strip().startswith(';'):
-                # Comment line
-                text_widget.tag_add("comment", line_start, line_end)
-            elif line.strip().startswith('G'):
-                # G-Code command
-                text_widget.tag_add("gcode", line_start, line_end)
-            elif line.strip().startswith('M'):
-                # M-Code command
-                text_widget.tag_add("mcode", line_start, line_end)
+                # Flip Y-coordinates to match G-Code coordinate system
+                # In image: Y=0 is top, Y increases downward
+                # In G-Code: Y=0 is bottom, Y increases upward
+                flipped_from_y = image_height_pixels - 1 - from_y
+                flipped_to_y = image_height_pixels - 1 - to_y
                 
-    def _save_gcode_to_file(self, gcode_lines):
-        """Save G-Code to a file.
-        
-        Args:
-            gcode_lines (list): List of G-Code command strings
-        """
-        file_path = filedialog.asksaveasfilename(
-            title="Save G-Code",
-            defaultextension=".gcode",
-            filetypes=[
-                ("G-code files", "*.gcode"),
-                ("NC files", "*.nc"),
-                ("Text files", "*.txt"),
-                ("All files", "*.*")
-            ],
-            initialfile=f"{self.sketching_stage.project_name}.gcode"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write("\n".join(gcode_lines))
-                messagebox.showinfo("G-Code Saved", f"G-Code saved to:\n{file_path}")
-            except Exception as e:
-                messagebox.showerror("Save Error", f"Failed to save G-Code:\n{str(e)}")
+                # Calculate relative positions from origin in pixels
+                rel_from_x = from_x - origin_x
+                rel_from_y = flipped_from_y - (image_height_pixels - 1 - origin_y)  # Flip origin Y too
+                rel_to_x = to_x - origin_x
+                rel_to_y = flipped_to_y - (image_height_pixels - 1 - origin_y)  # Flip origin Y too
                 
-    def _copy_to_clipboard(self, gcode_lines, window):
-        """Copy G-Code to clipboard.
+                # Convert to mm (multiply by pixel size)
+                from_x_mm = rel_from_x * pixel_size_mm
+                from_y_mm = rel_from_y * pixel_size_mm
+                to_x_mm = rel_to_x * pixel_size_mm
+                to_y_mm = rel_to_y * pixel_size_mm
+                
+                print(f"Instruction: {instruction}")
+                print(f"  Original Y: {from_y} -> Flipped Y: {flipped_from_y}")
+                print(f"  Relative pixels: from({rel_from_x}, {rel_from_y}) to({rel_to_x}, {rel_to_y})")
+                print(f"  Relative mm: from({from_x_mm:.3f}, {from_y_mm:.3f}) to({to_x_mm:.3f}, {to_y_mm:.3f})")
+                
+                # Move to start position (rapid move, laser off)
+                gcode_commands.append(f"G1 X{from_x_mm:.3f} Y{from_y_mm:.3f} S{power}")
+                
+                # Turn on laser
+                gcode_commands.append("M3")
+                
+                # Engrave line (linear move with laser on)
+                gcode_commands.append(f"G1 X{to_x_mm:.3f} Y{to_y_mm:.3f} F{speed} S{power}")
+                
+                # Turn off laser
+                gcode_commands.append("M5")
+        
+        print(f"\nGenerated {len(gcode_commands)} G-Code commands")
+        print("Sample G-Code commands:")
+        for i, cmd in enumerate(gcode_commands[:10]):  # Show first 10 commands
+            print(f"  {i+1}: {cmd}")
+        if len(gcode_commands) > 10:
+            print(f"  ... and {len(gcode_commands) - 10} more commands")
+            
+        return gcode_commands
+        
+    def show_preview_window(self, image_path, gcode_commands, origin):
+        """Show preview window with image and G-Code before printing.
         
         Args:
-            gcode_lines (list): List of G-Code command strings
-            window (tk.Toplevel): Window to show confirmation in
+            image_path (str): Path to the high-resolution image
+            gcode_commands (list): List of G-Code command strings
+            origin (tuple): Origin coordinates as (x, y) in pixels
         """
+        # Store G-Code commands for later use
+        self._current_gcode_commands = gcode_commands
+        
+        # Create new window
+        preview_window = tk.Toplevel()
+        preview_window.title("Preview Before Print - G2burn")
+        preview_window.geometry("1000x700")
+        preview_window.resizable(True, True)
+        
+        # Create main frame with padding
+        main_frame = ttk.Frame(preview_window, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure grid weights for resizing
+        preview_window.columnconfigure(0, weight=1)
+        preview_window.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+        
+        # Title label
+        title_label = ttk.Label(main_frame, text="Preview Before Print", font=("Arial", 16, "bold"))
+        title_label.grid(row=0, column=0, columnspan=2, pady=(0, 10))
+        
+        # Left side - Image preview
+        image_frame = ttk.LabelFrame(main_frame, text="High Resolution Image Preview", padding="5")
+        image_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 10))
+        
         try:
-            gcode_text = "\n".join(gcode_lines)
-            window.clipboard_clear()
-            window.clipboard_append(gcode_text)
-            window.update()  # Required for clipboard operation
+            # Load and display the image
+            image = Image.open(image_path)
             
-            # Show temporary confirmation
-            confirm_label = tk.Label(window, text="Copied to clipboard!", fg="green")
-            confirm_label.pack()
-            window.after(2000, confirm_label.destroy)  # Remove after 2 seconds
+            # Scale image to fit in preview (max 400x400)
+            max_size = 400
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage for display
+            photo = ImageTk.PhotoImage(image)
+            
+            # Create image label
+            image_label = ttk.Label(image_frame, image=photo)
+            image_label.image = photo  # Keep a reference
+            image_label.grid(row=0, column=0, padx=5, pady=5)
+            
+            # Image info
+            original_image = Image.open(image_path)
+            info_text = f"Original Size: {original_image.size[0]} x {original_image.size[1]} pixels\n"
+            info_text += f"Origin: ({origin[0]}, {origin[1]}) pixels\n"
+            info_text += f"Estimated Print Size: {original_image.size[0] * 0.072:.1f} x {original_image.size[1] * 0.072:.1f} mm"
+            
+            info_label = ttk.Label(image_frame, text=info_text, font=("Arial", 9))
+            info_label.grid(row=1, column=0, pady=(10, 0))
             
         except Exception as e:
-            messagebox.showerror("Copy Error", f"Failed to copy to clipboard:\n{str(e)}")
-            
-    def set_laser_settings(self, feed_rate=None, laser_power=None, travel_speed=None):
-        """Update laser settings.
+            error_label = ttk.Label(image_frame, text=f"Error loading image:\n{str(e)}")
+            error_label.grid(row=0, column=0, padx=5, pady=5)
         
-        Args:
-            feed_rate (int, optional): Feed rate in mm/min
-            laser_power (int, optional): Laser power (0-255 or 0-1000)
-            travel_speed (int, optional): Travel speed in mm/min
-        """
-        if feed_rate is not None:
-            self.feed_rate = feed_rate
-        if laser_power is not None:
-            self.laser_power = laser_power
-        if travel_speed is not None:
-            self.travel_speed = travel_speed
-            
-    def get_laser_settings(self):
-        """Get current laser settings.
+        # Right side - G-Code preview
+        gcode_frame = ttk.LabelFrame(main_frame, text="G-Code Commands", padding="5")
+        gcode_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        gcode_frame.columnconfigure(0, weight=1)
+        gcode_frame.rowconfigure(0, weight=1)
         
-        Returns:
-            dict: Current laser settings
-        """
-        return {
-            'feed_rate': self.feed_rate,
-            'laser_power': self.laser_power,
-            'travel_speed': self.travel_speed
-        }
+        # G-Code text area with scrollbar
+        gcode_text = scrolledtext.ScrolledText(
+            gcode_frame, 
+            width=50, 
+            height=20,
+            wrap=tk.NONE,
+            font=("Courier", 9)
+        )
+        gcode_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Insert G-Code commands
+        gcode_content = "\n".join(gcode_commands)
+        gcode_text.insert(tk.END, gcode_content)
+        gcode_text.config(state=tk.DISABLED)  # Make read-only
+        
+        # G-Code stats
+        stats_text = f"Total Commands: {len(gcode_commands)}\n"
+        stats_text += f"Estimated Lines: {len([cmd for cmd in gcode_commands if cmd.startswith('G1')])}\n"
+        stats_text += f"Rapid Moves: {len([cmd for cmd in gcode_commands if cmd.startswith('G0')])}"
+        
+        stats_label = ttk.Label(gcode_frame, text=stats_text, font=("Arial", 9))
+        stats_label.grid(row=1, column=0, pady=(10, 0), sticky=tk.W)
+        
+        # Bottom buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=(20, 0))
+        
+        # Test connection button
+        test_button = ttk.Button(
+            button_frame, 
+            text="Test Laser Engraver Connection",
+            command=self._test_connection
+        )
+        test_button.grid(row=0, column=0, padx=(0, 10))
+        
+        # G2Mark button (sends G-Code to laser)
+        g2mark_button = ttk.Button(
+            button_frame, 
+            text="G2Mark - Send to Laser",
+            command=self._g2mark_send_gcode,
+            style="Accent.TButton"
+        )
+        g2mark_button.grid(row=0, column=1, padx=(10, 0))
+        
+        # Close button
+        close_button = ttk.Button(
+            button_frame, 
+            text="Close",
+            command=preview_window.destroy
+        )
+        close_button.grid(row=0, column=2, padx=(20, 0))
+        
+        # Center the window
+        preview_window.update_idletasks()
+        width = preview_window.winfo_width()
+        height = preview_window.winfo_height()
+        x = (preview_window.winfo_screenwidth() // 2) - (width // 2)
+        y = (preview_window.winfo_screenheight() // 2) - (height // 2)
+        preview_window.geometry(f"{width}x{height}+{x}+{y}")
+        
+    def _test_connection(self):
+        """Test laser engraver connection by moving head in 1cm rectangle."""
+        try:
+            import serial
+            import time
+            
+            # Connection parameters
+            port = '/dev/tty.wchusbserial1130'
+            baud_rate = 115200
+            
+            # Show connection attempt dialog
+            result = messagebox.askyesno(
+                "Test Connection", 
+                f"Test laser engraver connection?\n\nPort: {port}\nBaud Rate: {baud_rate}\n\nThis will move the laser head in a 1cm rectangle.\nMake sure the laser is safe to move!"
+            )
+            
+            if not result:
+                return
+            
+            # Attempt connection
+            try:
+                ser = serial.Serial(port, baud_rate, timeout=1)
+                time.sleep(2)
+                
+                # Wake up GRBL
+                ser.write(b"\r\n\r\n")
+                time.sleep(2)
+                ser.flushInput()
+                
+                # Send test movement commands (1cm rectangle)
+                commands = [
+                    b"G90\n",           # Absolute positioning
+                    b"G0 X10 F3000\n",  # Right 1cm (10mm)
+                    b"G0 X10 Y10 F3000\n",  # Up 1cm
+                    b"G0 X0 Y10 F3000\n",   # Left 1cm
+                    b"G0 X0 Y0 F3000\n"     # Back to origin
+                ]
+                
+                for cmd in commands:
+                    ser.write(cmd)
+                    time.sleep(0.1)  # Small delay between commands
+                
+                # Close connection
+                time.sleep(1)
+                ser.close()
+                
+                messagebox.showinfo(
+                    "Test Connection - Success", 
+                    "Connection test completed successfully!\n\nThe laser head should have moved in a 1cm rectangle."
+                )
+                
+            except serial.SerialException as e:
+                messagebox.showerror(
+                    "Connection Error", 
+                    f"Failed to connect to laser engraver:\n\n{str(e)}\n\nPlease check:\n• Cable connection\n• Port name ({port})\n• Device is powered on"
+                )
+                
+            except Exception as e:
+                messagebox.showerror(
+                    "Test Error", 
+                    f"Error during connection test:\n\n{str(e)}"
+                )
+                
+        except ImportError:
+            messagebox.showerror(
+                "Missing Module", 
+                "The 'pyserial' module is required for laser communication.\n\nInstall it with:\npip install pyserial"
+            )
+        
+    def _g2mark_send_gcode(self):
+        """Send G-Code commands to the laser engraver."""
+        # Get the G-Code commands from the preview window
+        if not hasattr(self, '_current_gcode_commands') or not self._current_gcode_commands:
+            messagebox.showerror(
+                "No G-Code", 
+                "No G-Code commands available to send.\nPlease generate G-Code first."
+            )
+            return
+            
+        try:
+            import serial
+            import time
+            
+            # Connection parameters
+            port = '/dev/tty.wchusbserial1130'
+            baud_rate = 115200
+            
+            # Show confirmation dialog with command count
+            command_count = len(self._current_gcode_commands)
+            result = messagebox.askyesno(
+                "Send G-Code to Laser", 
+                f"Send {command_count} G-Code commands to the laser engraver?\n\nPort: {port}\nBaud Rate: {baud_rate}\n\nThis will start the engraving process.\nMake sure the laser is positioned correctly and safety measures are in place!"
+            )
+            
+            if not result:
+                return
+            
+            # Show progress window
+            progress_window = tk.Toplevel()
+            progress_window.title("Sending G-Code - G2burn")
+            progress_window.geometry("400x200")
+            progress_window.resizable(False, False)
+            
+            # Center the progress window
+            progress_window.update_idletasks()
+            x = (progress_window.winfo_screenwidth() // 2) - (200)
+            y = (progress_window.winfo_screenheight() // 2) - (100)
+            progress_window.geometry(f"400x200+{x}+{y}")
+            
+            # Progress frame
+            progress_frame = ttk.Frame(progress_window, padding="20")
+            progress_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Status label
+            status_label = ttk.Label(progress_frame, text="Connecting to laser engraver...", font=("Arial", 12))
+            status_label.pack(pady=10)
+            
+            # Progress bar
+            progress_var = tk.DoubleVar()
+            progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100)
+            progress_bar.pack(fill=tk.X, pady=10)
+            
+            # Command counter
+            counter_label = ttk.Label(progress_frame, text="0 / 0 commands sent", font=("Arial", 10))
+            counter_label.pack(pady=5)
+            
+            # Cancel button
+            cancel_requested = tk.BooleanVar(value=False)
+            cancel_button = ttk.Button(progress_frame, text="Cancel", command=lambda: cancel_requested.set(True))
+            cancel_button.pack(pady=10)
+            
+            # Update the window
+            progress_window.update()
+            
+            try:
+                # Attempt connection
+                ser = serial.Serial(port, baud_rate, timeout=1)
+                time.sleep(2)
+                
+                status_label.config(text="Connected! Initializing laser...")
+                progress_window.update()
+                
+                # Wake up GRBL
+                ser.write(b"\r\n\r\n")
+                time.sleep(2)
+                ser.flushInput()
+                
+                status_label.config(text="Sending G-Code commands...")
+                progress_window.update()
+                
+                # Send G-Code commands
+                total_commands = len(self._current_gcode_commands)
+                
+                for i, command in enumerate(self._current_gcode_commands):
+                    # Check if cancel was requested
+                    if cancel_requested.get():
+                        status_label.config(text="Cancelling...")
+                        progress_window.update()
+                        # Send emergency stop
+                        ser.write(b"M5\n")  # Turn off laser
+                        ser.write(b"!\n")   # Feed hold
+                        break
+                    
+                    # Send command
+                    command_bytes = (command + "\n").encode('utf-8')
+                    ser.write(command_bytes)
+                    
+                    # Update progress
+                    progress_percent = ((i + 1) / total_commands) * 100
+                    progress_var.set(progress_percent)
+                    counter_label.config(text=f"{i + 1} / {total_commands} commands sent")
+                    
+                    # Update window
+                    progress_window.update()
+                    
+                    # Small delay between commands
+                    time.sleep(0.1)
+                
+                if not cancel_requested.get():
+                    status_label.config(text="G-Code sent successfully!")
+                    cancel_button.config(text="Close")
+                    
+                    # Close connection
+                    time.sleep(1)
+                    ser.close()
+                    
+                    messagebox.showinfo(
+                        "G2Mark - Success", 
+                        f"G-Code sent successfully!\n\n{total_commands} commands were sent to the laser engraver.\nThe engraving process should now be running."
+                    )
+                else:
+                    status_label.config(text="Operation cancelled!")
+                    cancel_button.config(text="Close")
+                    ser.close()
+                    
+                    messagebox.showwarning(
+                        "G2Mark - Cancelled", 
+                        "G-Code transmission was cancelled.\nThe laser has been stopped."
+                    )
+                
+            except serial.SerialException as e:
+                progress_window.destroy()
+                messagebox.showerror(
+                    "Connection Error", 
+                    f"Failed to connect to laser engraver:\n\n{str(e)}\n\nPlease check:\n• Cable connection\n• Port name ({port})\n• Device is powered on"
+                )
+                
+            except Exception as e:
+                progress_window.destroy()
+                messagebox.showerror(
+                    "G2Mark Error", 
+                    f"Error during G-Code transmission:\n\n{str(e)}"
+                )
+                
+        except ImportError:
+            messagebox.showerror(
+                "Missing Module", 
+                "The 'pyserial' module is required for laser communication.\n\nInstall it with:\npip install pyserial"
+            )

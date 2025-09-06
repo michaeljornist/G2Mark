@@ -6,6 +6,8 @@ A modern, object-oriented laser engraving application built with Python and Tkin
 
 - **Modern OOP Architecture**: Clean, maintainable code structure with proper separation of concerns
 - **Intuitive Drawing Tools**: Line and rectangle drawing tools with real-time preview
+- **Line Editing**: Edit length and angle of lines numerically while drawing
+- **Snap-to-Point**: Precisely align drawings by snapping to existing points
 - **Precise Workspace**: Millimeter-accurate workspace with grid and rulers
 - **G-Code Generation**: Export your designs as G-Code for laser engraving
 - **GRBL Support**: Direct communication with GRBL-based laser controllers
@@ -26,6 +28,8 @@ G2burn/
 ├── setup.py                # Setup and installation script
 ├── requirements.txt        # Python package dependencies
 ├── README.md               # This file
+├── SNAP_FEATURE.md         # Documentation for snap-to-point feature
+├── LINE_EDITING_FEATURE.md # Documentation for line editing feature
 ├── main.py                 # Legacy code (preserved for reference)
 └── legacy/                 # Legacy files and utilities
     └── other/              # Original utility scripts
