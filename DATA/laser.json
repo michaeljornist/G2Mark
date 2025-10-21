@@ -1,0 +1,94 @@
+{
+  "machines": [
+    {
+      "id": "laser_001",
+      "name": "Ortur Laser Master 2",
+      "type": "Diode Laser",
+      "work_area": {
+        "width_mm": 400,
+        "height_mm": 430
+      },
+      "connection": {
+        "port": "/dev/tty.wchusbserial1130",
+        "baud_rate": 115200
+      },
+      "settings": {
+        "max_power": 255,
+        "default_speed": 1000,
+        "rapid_speed": 3000
+      },
+      "status": "connected",
+      "profiles": [
+        {
+          "id": "profile_001",
+          "name": "Wood Cutting 1mm",
+          "type": "cutting1mm",
+          "surface": "Wood plywood 1mm",
+          "power": 85,
+          "speed": 800
+        },
+        {
+          "id": "profile_002",
+          "name": "Wood Cutting 2mm",
+          "type": "cutting2mm",
+          "surface": "Wood plywood 2mm",
+          "power": 95,
+          "speed": 600
+        },
+        {
+          "id": "profile_003",
+          "name": "Acrylic Engraving",
+          "type": "engrave",
+          "surface": "Clear acrylic 3mm",
+          "power": 45,
+          "speed": 1500
+        },
+        {
+          "id": "profile_6aae2473",
+          "name": "gggg",
+          "type": "engrave",
+          "surface": "wood",
+          "power": 50,
+          "speed": 1000
+        }
+      ]
+    },
+    {
+      "id": "laser_002",
+      "name": "Custom CNC Laser",
+      "type": "CO2 Laser",
+      "work_area": {
+        "width_mm": 300,
+        "height_mm": 200
+      },
+      "connection": {
+        "port": "/dev/tty.usbserial-ABC123",
+        "baud_rate": 115200
+      },
+      "settings": {
+        "max_power": 1000,
+        "default_speed": 800,
+        "rapid_speed": 2500
+      },
+      "status": "disconnected",
+      "profiles": [
+        {
+          "id": "profile_004",
+          "name": "Metal Engraving",
+          "type": "engrave",
+          "surface": "Anodized aluminum",
+          "power": 65,
+          "speed": 1200
+        },
+        {
+          "id": "profile_005",
+          "name": "Cardboard Cutting",
+          "type": "cutting2mm",
+          "surface": "Cardboard 2mm",
+          "power": 30,
+          "speed": 2000
+        }
+      ]
+    }
+  ]
+}

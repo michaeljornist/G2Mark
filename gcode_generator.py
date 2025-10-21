@@ -23,9 +23,8 @@ class GCodeGenerator:
         self.sketching_stage = sketching_stage
         
         # G-Code settings
-        self.feed_rate = 1000  # mm/min
         self.laser_power = 255  # 0-255 or 0-1000 depending on controller
-        self.travel_speed = 1000  # mm/min for rapid moves
+        self.travel_speed = 2000  # mm/min for rapid moves
         
     def generate_instructions_from_image(self, image_path, origin):
         """Generate instructions from a high-resolution image.
@@ -295,7 +294,7 @@ class GCodeGenerator:
                 print(f"  Relative mm: from({from_x_mm:.3f}, {from_y_mm:.3f}) to({to_x_mm:.3f}, {to_y_mm:.3f})")
                 
                 # Move to start position (rapid move, laser off)
-                gcode_commands.append(f"G1 X{from_x_mm:.3f} Y{from_y_mm:.3f} S{power}")
+                gcode_commands.append(f"G0 X{from_x_mm:.3f} Y{from_y_mm:.3f} S{power}")
                 
                 # Turn on laser
                 gcode_commands.append("M3")
@@ -306,6 +305,8 @@ class GCodeGenerator:
                 # Turn off laser
                 gcode_commands.append("M5")
         
+        gcode_commands.append(f"G0 X0 Y0 S{power}")
+        
         print(f"\nGenerated {len(gcode_commands)} G-Code commands")
         print("Sample G-Code commands:")
         for i, cmd in enumerate(gcode_commands[:10]):  # Show first 10 commands
@@ -315,20 +316,23 @@ class GCodeGenerator:
             
         return gcode_commands
         
-    def show_preview_window(self, image_path, gcode_commands, origin):
+    def show_preview_window(self, image_path, gcode_commands, origin, window_title=None, profile_info=None):
         """Show preview window with image and G-Code before printing.
         
         Args:
             image_path (str): Path to the high-resolution image
             gcode_commands (list): List of G-Code command strings
             origin (tuple): Origin coordinates as (x, y) in pixels
+            window_title (str, optional): Custom window title
+            profile_info (str, optional): Profile information to display
         """
         # Store G-Code commands for later use
         self._current_gcode_commands = gcode_commands
         
         # Create new window
         preview_window = tk.Toplevel()
-        preview_window.title("Preview Before Print - G2burn")
+        title = window_title if window_title else "Preview Before Print - G2burn"
+        preview_window.title(title)
         preview_window.geometry("1000x700")
         preview_window.resizable(True, True)
         
@@ -371,6 +375,10 @@ class GCodeGenerator:
             info_text = f"Original Size: {original_image.size[0]} x {original_image.size[1]} pixels\n"
             info_text += f"Origin: ({origin[0]}, {origin[1]}) pixels\n"
             info_text += f"Estimated Print Size: {original_image.size[0] * 0.072:.1f} x {original_image.size[1] * 0.072:.1f} mm"
+            
+            # Add profile information if provided
+            if profile_info:
+                info_text += f"\n\nProfile Settings:\n{profile_info}"
             
             info_label = ttk.Label(image_frame, text=info_text, font=("Arial", 9))
             info_label.grid(row=1, column=0, pady=(10, 0))

@@ -83,11 +83,13 @@ class DrawingTool(ABC):
         # Get work area bounds for coordinate conversion
         x1, y1, _, _ = self.sketching_stage.get_work_area_bounds()
         
-        nearest_point = None
+        nearest_ref_point = None
+        nearest_point_on_object = None #<====== New
         min_distance = float('inf')
         
         # Search through all drawing objects for reference points
         for drawing_obj in self.sketching_stage.drawing_objects:
+            #Part 1 - Reference points
             if drawing_obj['type'] == 'reference_point':
                 real_coords = drawing_obj['real_coords']
                 
@@ -101,9 +103,77 @@ class DrawingTool(ABC):
                 # Check if within snap radius and closer than previous points
                 if distance <= self.snap_radius_pixels and distance < min_distance:
                     min_distance = distance
-                    nearest_point = (ref_canvas_x, ref_canvas_y)
+                    nearest_ref_point = (ref_canvas_x, ref_canvas_y)
+
+            #Part 2 - Line projections
+            elif drawing_obj['type'] == 'line':
+                real_coords = drawing_obj['real_coords']
+                if len(real_coords) >= 4:  # line needs start and end points
+                    # Convert line endpoints from mm to canvas coordinates
+                    line_start_x = x1 + (real_coords[0] * self.sketching_stage.zoom_level)
+                    line_start_y = y1 + (real_coords[1] * self.sketching_stage.zoom_level)
+                    line_end_x = x1 + (real_coords[2] * self.sketching_stage.zoom_level)
+                    line_end_y = y1 + (real_coords[3] * self.sketching_stage.zoom_level)
                     
-        return nearest_point
+                    # Calculate the closest point on the line segment to the mouse position
+                    closest_point = self._get_closest_point_on_line_segment(
+                        canvas_x, canvas_y,
+                        line_start_x, line_start_y, line_end_x, line_end_y
+                    )
+                    
+                    if closest_point:
+                        closest_x, closest_y = closest_point
+                        
+                        # Calculate distance from mouse to closest point on line
+                        distance = ((canvas_x - closest_x) ** 2 + (canvas_y - closest_y) ** 2) ** 0.5
+                        
+                        # Check if within snap radius and closer than previous points
+                        if distance <= self.snap_radius_pixels and distance < min_distance:
+                            min_distance = distance
+                            nearest_point_on_object = (closest_x, closest_y)
+                            
+        # Return the closest point found (reference point takes priority if same distance)
+        if nearest_ref_point and nearest_point_on_object:
+            # If both found, return the one with minimum distance (already tracked)
+            return nearest_ref_point if min_distance == ((canvas_x - nearest_ref_point[0]) ** 2 + (canvas_y - nearest_ref_point[1]) ** 2) ** 0.5 else nearest_point_on_object
+        elif nearest_ref_point:
+            return nearest_ref_point
+        elif nearest_point_on_object:
+            return nearest_point_on_object
+        else:
+            return None
+            
+    def _get_closest_point_on_line_segment(self, px, py, x1, y1, x2, y2):
+        """Calculate the closest point on a line segment to a given point.
+        
+        Args:
+            px, py: Point coordinates (mouse position)
+            x1, y1: Line segment start point
+            x2, y2: Line segment end point
+            
+        Returns:
+            tuple: (closest_x, closest_y) or None if line is invalid
+        """
+        # Calculate line segment vector
+        dx = x2 - x1
+        dy = y2 - y1
+        
+        # If line segment has zero length, return the start point
+        if dx == 0 and dy == 0:
+            return (x1, y1)
+        
+        # Calculate the parameter t for the projection
+        # t = 0 means closest point is at start, t = 1 means at end
+        t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+        
+        # Clamp t to [0, 1] to stay within the line segment
+        t = max(0, min(1, t))
+        
+        # Calculate the closest point
+        closest_x = x1 + t * dx
+        closest_y = y1 + t * dy
+        
+        return (closest_x, closest_y)
         
     def _apply_snap(self, canvas_x, canvas_y):
         """Apply snapping to mouse coordinates if near a reference point.
@@ -641,23 +711,33 @@ class LineTool(DrawingTool):
         )
         
         # Store the drawing object with width in mm
+        # Get a unique operation ID for this drawing operation (line + reference points)
+        operation_id = self.sketching_stage._get_next_operation_id()
+        
         self.sketching_stage.add_drawing_object(
             'line',
             [start_mm_x, start_mm_y, end_mm_x, end_mm_y],
-            {'fill': 'black', 'width_mm': self.line_width_mm}
+            {'fill': 'black', 'width_mm': self.line_width_mm},
+            operation_id
         )
         
-        # Add reference points at the ends of the line
+        # Add reference points at the ends of the line with the same operation ID
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [start_mm_x, start_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [end_mm_x, end_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
+        
+        # Add operation ID to undo stack (only once for the entire operation)
+        self.sketching_stage.undo_stack.append(operation_id)
+        print(f"Line tool: Added operation ID {operation_id} to undo stack")
         
         # Clean up and reset
         self.canvas.delete("temp")
@@ -1118,33 +1198,45 @@ class RectangleTool(DrawingTool):
         )
         
         # Store the drawing object with line width in mm
+        # Get a unique operation ID for this drawing operation (rectangle + reference points)
+        operation_id = self.sketching_stage._get_next_operation_id()
+        
         self.sketching_stage.add_drawing_object(
             'rectangle',
             [start_mm_x, start_mm_y, end_mm_x, end_mm_y],
-            {'outline': 'black', 'width_mm': self.line_width_mm, 'fill': ''}
+            {'outline': 'black', 'width_mm': self.line_width_mm, 'fill': ''},
+            operation_id
         )
         
-        # Add reference points at the corners of the rectangle
+        # Add reference points at the corners of the rectangle with the same operation ID
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [start_mm_x, start_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [end_mm_x, start_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [end_mm_x, end_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
         self.sketching_stage.add_drawing_object(
             'reference_point',
             [start_mm_x, end_mm_y],
-            {'color': 'blue'}
+            {'color': 'blue'},
+            operation_id
         )
+        
+        # Add operation ID to undo stack (only once for the entire operation)
+        self.sketching_stage.undo_stack.append(operation_id)
+        print(f"Rectangle tool: Added operation ID {operation_id} to undo stack")
         
         # Clean up and reset
         self.canvas.delete("temp")
@@ -2544,13 +2636,13 @@ class DrawingToolManager:
             return None
         
     def _create_tool_buttons(self):
-        """Create buttons for each tool with compact sizing."""
-        # Use compact sizing for all buttons
-        btn_width = 40   # Compact size
-        btn_height = 40  # Compact size
-        icon_size = 35   # Smaller icons
-        text_width = 7   # Smaller text buttons
-        font_size = 8    # Smaller font
+        """Create buttons for each tool arranged vertically."""
+        # Use toolbar sizing for all buttons
+        btn_width = 50   # Slightly wider for vertical layout
+        btn_height = 50  # Square buttons
+        icon_size = 40   # Larger icons for vertical layout
+        text_width = 8   # Text button width
+        font_size = 9    # Readable font size
         
         # Select tool button (text for now)
         self.tool_buttons['select'] = tk.Button(
@@ -2560,7 +2652,7 @@ class DrawingToolManager:
             font=("Arial", font_size),
             command=lambda: self.set_active_tool('select')
         )
-        self.tool_buttons['select'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['select'].pack(side=tk.TOP, pady=2)
         
         # Line tool button with icon
         try:
@@ -2579,8 +2671,8 @@ class DrawingToolManager:
                 highlightthickness=0,
                 padx=0,
                 pady=0,
-                bg='#f0f0f0',
-                activebackground='#e0e0e0',
+                bg='#e0e0e0',
+                activebackground='#d0d0d0',
                 command=lambda: self.set_active_tool('line')
             )
             # Add tooltip
@@ -2595,7 +2687,7 @@ class DrawingToolManager:
                 font=("Arial", font_size),
                 command=lambda: self.set_active_tool('line')
             )
-        self.tool_buttons['line'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['line'].pack(side=tk.TOP, pady=2)
         
         # Rectangle tool button with icon
         try:
@@ -2614,8 +2706,8 @@ class DrawingToolManager:
                 highlightthickness=0,
                 padx=0,
                 pady=0,
-                bg='#f0f0f0',
-                activebackground='#e0e0e0',
+                bg='#e0e0e0',
+                activebackground='#d0d0d0',
                 command=lambda: self.set_active_tool('rectangle')
             )
             # Add tooltip
@@ -2630,7 +2722,7 @@ class DrawingToolManager:
                 font=("Arial", font_size),
                 command=lambda: self.set_active_tool('rectangle')
             )
-        self.tool_buttons['rectangle'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['rectangle'].pack(side=tk.TOP, pady=2)
         
         # Circle tool button with icon
         try:
@@ -2649,8 +2741,8 @@ class DrawingToolManager:
                 highlightthickness=0,
                 padx=0,
                 pady=0,
-                bg='#f0f0f0',
-                activebackground='#e0e0e0',
+                bg='#e0e0e0',
+                activebackground='#d0d0d0',
                 command=lambda: self.set_active_tool('circle')
             )
             # Add tooltip
@@ -2665,7 +2757,7 @@ class DrawingToolManager:
                 font=("Arial", font_size),
                 command=lambda: self.set_active_tool('circle')
             )
-        self.tool_buttons['circle'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['circle'].pack(side=tk.TOP, pady=2)
         
         # Image tool button with icon
         try:
@@ -2684,8 +2776,8 @@ class DrawingToolManager:
                 highlightthickness=0,
                 padx=0,
                 pady=0,
-                bg='#f0f0f0',
-                activebackground='#e0e0e0',
+                bg='#e0e0e0',
+                activebackground='#d0d0d0',
                 command=lambda: self.set_active_tool('image')
             )
             # Add tooltip
@@ -2700,7 +2792,7 @@ class DrawingToolManager:
                 font=("Arial", font_size),
                 command=lambda: self.set_active_tool('image')
             )
-        self.tool_buttons['image'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['image'].pack(side=tk.TOP, pady=2)
         
         # Origin tool button with icon
         origin_icon = self._load_icon("place_origin", (icon_size, icon_size))
@@ -2730,7 +2822,7 @@ class DrawingToolManager:
                 command=lambda: self.set_active_tool('origin'),
                 bg="#FFE6E6"  # Light red background
             )
-        self.tool_buttons['origin'].pack(side=tk.LEFT, padx=1, pady=2)
+        self.tool_buttons['origin'].pack(side=tk.TOP, pady=2)
         # Add tooltip
         ToolTip(self.tool_buttons['origin'], "Origin Tool\nSet the origin point (0,0)")
         
@@ -2743,7 +2835,7 @@ class DrawingToolManager:
             command=self.sketching_stage.reset_view,
             bg="#E6F3FF"  # Light blue background
         )
-        home_btn.pack(side=tk.LEFT, padx=1, pady=2)
+        home_btn.pack(side=tk.TOP, pady=2)
         # Add tooltip
         ToolTip(home_btn, "Fit to View\nZoom out to see entire work area")
         
@@ -2756,7 +2848,7 @@ class DrawingToolManager:
             command=self.toggle_snap,
             bg="#90EE90"  # Light green when enabled
         )
-        self.snap_btn.pack(side=tk.LEFT, padx=1, pady=2)
+        self.snap_btn.pack(side=tk.TOP, pady=2)
         
     def toggle_snap(self):
         """Toggle snap-to-point functionality for all tools."""
@@ -2834,7 +2926,7 @@ class DrawingToolManager:
                     # Icon button - flat with light gray background
                     button.config(
                         relief='flat', 
-                        bg="#f0f0f0", 
+                        bg="#e0e0e0",  # Match toolbar background
                         borderwidth=1,
                         highlightthickness=0
                     )
@@ -2842,7 +2934,7 @@ class DrawingToolManager:
                     # Text button - raised with default background
                     button.config(
                         relief='raised', 
-                        bg="#f0f0f0",
+                        bg="#e0e0e0",  # Match toolbar background
                         borderwidth=1,
                         highlightthickness=0
                     )
